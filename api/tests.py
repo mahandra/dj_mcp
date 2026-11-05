@@ -163,6 +163,18 @@ class UserApiTests(APITestCase):
             ["alice", "bob", "carol"],
         )
 
+    def test_search_matches_workplace(self):
+        alice = make_user("alice")
+        alice.profile.workplace = "Bayshore Software"
+        alice.profile.save()
+        make_user("bob")
+
+        response = self.client.get(self.list_url, {"search": "bayshore"})
+
+        self.assertEqual(
+            [user["username"] for user in response.data["results"]], ["alice"]
+        )
+
     def test_delete_removes_user_and_profile(self):
         user = make_user("alice")
 
@@ -171,6 +183,52 @@ class UserApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(User.objects.filter(pk=user.pk).exists())
         self.assertFalse(Profile.objects.filter(user_id=user.pk).exists())
+
+
+class UserApiLoggingTests(APITestCase):
+    def assert_logged(self, logs, message):
+        self.assertEqual([record.getMessage() for record in logs.records], [message])
+
+    def test_create_is_logged(self):
+        with self.assertLogs("api.views", level="INFO") as logs:
+            response = self.client.post(
+                reverse("user-list"), {"username": "bob"}, format="json"
+            )
+
+        self.assert_logged(
+            logs, f"Created user id={response.data['id']} username='bob'"
+        )
+
+    def test_update_is_logged(self):
+        user = make_user("alice")
+
+        with self.assertLogs("api.views", level="INFO") as logs:
+            self.client.patch(
+                reverse("user-detail", args=[user.pk]),
+                {"first_name": "Alice"},
+                format="json",
+            )
+
+        self.assert_logged(logs, f"Updated user id={user.pk} username='alice'")
+
+    def test_delete_is_logged(self):
+        user = make_user("alice")
+        user_id = user.pk
+
+        with self.assertLogs("api.views", level="INFO") as logs:
+            self.client.delete(reverse("user-detail", args=[user_id]))
+
+        self.assert_logged(logs, f"Deleted user id={user_id} username='alice'")
+
+    def test_rejected_create_is_not_logged(self):
+        make_user("bob")
+
+        with self.assertNoLogs("api.views", level="INFO"):
+            response = self.client.post(
+                reverse("user-list"), {"username": "bob"}, format="json"
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class ProfileSignalTests(TestCase):

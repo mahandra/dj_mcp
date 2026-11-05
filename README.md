@@ -33,7 +33,7 @@ uv run python manage.py createsuperuser   # for the admin at /admin/
 | `PUT`/`PATCH` | `/api/users/{id}/`        | Update a user                        |
 | `DELETE`      | `/api/users/{id}/`        | Delete a user and their profile      |
 | `GET`         | `/api/users/?city=Tampa`  | Filter by city (case-insensitive)    |
-| `GET`         | `/api/users/?search=text` | Search username, first and last name |
+| `GET`         | `/api/users/?search=text` | Search username, names and workplace |
 
 User representation:
 

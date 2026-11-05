@@ -139,3 +139,20 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 10,
 }
+
+# Logging
+# https://docs.djangoproject.com/en/6.1/topics/logging/
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "{levelname} {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "loggers": {
+        "api": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}
