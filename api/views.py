@@ -12,7 +12,6 @@ User = get_user_model()
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.select_related("profile").order_by("id")
-    logger.info("UserViewSet initialized")
     serializer_class = UserSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["username", "first_name", "last_name", "profile__workplace"]

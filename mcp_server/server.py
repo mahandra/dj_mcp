@@ -14,10 +14,10 @@ def call_api(method: str, path: str, **kwargs) -> dict:
     except httpx.RequestError as exc:
         # str(exc) can be empty (e.g. timeouts), so keep the exception type.
         detail = f"{type(exc).__name__}: {exc}"
-        print('Error--:', detail, file=sys.stderr)
+        print("Error:", detail, file=sys.stderr)
         return {"error": "api_unavailable", "detail": detail}
     if response.is_error:
-        print('Error---:', response.status_code, response.text, file=sys.stderr)
+        print("Error:", response.status_code, response.text, file=sys.stderr)
         return {"error": response.status_code, "detail": response.text}
     return response.json() if response.content else {"status": "ok"}
 
@@ -37,7 +37,7 @@ def list_users(
 
     Args:
         city: Full city name, case-insensitive. Partial names do not match.
-        search: Text to find in username, first name or last name or workspace.
+        search: Text to find in username, first name, last name or workplace.
         page: Page number, starting at 1. Use the "next" field to see if more exist.
     """
     params = {"page": page, "city": city, "search": search}
