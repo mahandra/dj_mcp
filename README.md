@@ -1,6 +1,7 @@
 # dj-mcp
 
-Django REST API for users with a nested profile.
+Django REST API for users with a nested profile, plus an [MCP](https://modelcontextprotocol.io)
+server that lets AI assistants such as Claude work with those users.
 Built with Django 6.1, Django REST Framework, SQLite and [uv](https://docs.astral.sh/uv/).
 
 ## Setup
@@ -96,6 +97,91 @@ curl "http://127.0.0.1:8000/api/users/?city=Tampa"
 # Search
 curl "http://127.0.0.1:8000/api/users/?search=rossi"
 ```
+
+## MCP server
+
+`mcp_server/server.py` is a [Model Context Protocol](https://modelcontextprotocol.io) server
+named `dj-users`. It lets an MCP client (Claude Code, Claude Desktop, MCP Inspector) read and
+change users in plain language, for example "find everyone from Tampa" or "move user 3 to Miami".
+
+### How it works
+
+```
+MCP client  ──stdio──▶  mcp_server/server.py  ──HTTP──▶  Django API (127.0.0.1:8000/api/)  ──▶  SQLite
+```
+
+- The client starts the server as a subprocess and talks to it over **stdio** (the default
+  transport of `mcp.run()`).
+- The server does not touch the database or import Django. Every tool is a thin wrapper that
+  sends an HTTP request to the REST API with `httpx`, so all validation, the profile signal and
+  the write logging in `UserViewSet` apply exactly as they do for `curl`.
+- **The Django dev server must be running** (`uv run python manage.py runserver`). The API URL is
+  set by `API_URL` at the top of `server.py`.
+- Errors are returned to the model as data instead of raising, so it can see what went wrong and
+  react:
+  - `{"error": "api_unavailable", "detail": "ConnectError: ..."}` when the API cannot be reached;
+  - `{"error": 400, "detail": "<response body>"}` for HTTP errors such as validation failures or 404.
+
+  The same details are printed to stderr, since stdout is reserved for the MCP protocol.
+
+### Tools
+
+| Tool          | REST call                   | Notes                                                        |
+| ------------- | --------------------------- | ------------------------------------------------------------ |
+| `list_users`  | `GET /api/users/`           | Optional `city` (full name, case-insensitive), `search`, `page` |
+| `get_user`    | `GET /api/users/{id}/`      | One user with profile                                        |
+| `create_user` | `POST /api/users/`          | `username` required; names, email and profile fields optional |
+| `update_user` | `PATCH /api/users/{id}/`    | Only the fields passed are changed                           |
+| `delete_user` | `DELETE /api/users/{id}/`   | Marked `destructive_hint`, so clients ask for confirmation   |
+
+Profile fields (`birth_date` as `YYYY-MM-DD`, `city`, `workplace`) are flat tool arguments; the
+server nests them into `profile` before calling the API.
+
+### Resources and prompts
+
+- **Resource** `users://{user_id}` returns the same data as `get_user`, so a client can attach a
+  user to the conversation as context.
+- **Prompt** `city_report(city)` produces the request "List the users from {city} and summarize
+  where they work.", which the model answers with `list_users`.
+
+### Connecting a client
+
+Start the API first:
+
+```bash
+uv run python manage.py runserver
+```
+
+**Claude Code** — register the server for this project:
+
+```bash
+claude mcp add dj-users -- uv run --directory /path/to/dj_mcp python mcp_server/server.py
+```
+
+or create `.mcp.json` in the project root (it is git-ignored, because the path is machine-specific):
+
+```json
+{
+  "mcpServers": {
+    "dj-users": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/dj_mcp", "python", "mcp_server/server.py"]
+    }
+  }
+}
+```
+
+Claude Desktop uses the same `mcpServers` block in its `claude_desktop_config.json`.
+
+**MCP Inspector** — try the tools in a browser without an AI client:
+
+```bash
+npx @modelcontextprotocol/inspector uv run python mcp_server/server.py
+```
+
+`--directory` makes uv use this project's environment and Python no matter which directory the
+client starts the server from.
 
 ## Permissions
 
