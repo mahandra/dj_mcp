@@ -18,6 +18,7 @@ staticfiles/
 
 # Local environment
 .env
+.mcp.json
 
 # IDE
 .idea/
