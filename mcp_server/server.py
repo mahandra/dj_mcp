@@ -104,10 +104,38 @@ def delete_user(user_id: int) -> dict:
     return call_api("DELETE", f"/users/{user_id}/")
 
 ###### Resources ######
-@mcp.resource("users://{user_id}")
+# Template resource: the URI has a parameter, so clients list it under
+# resources/templates/list and the user fills in the id.
+@mcp.resource("users://{user_id}", mime_type="application/json")
 def user_resource(user_id: int) -> dict:
     """User data as a readable resource."""
     return call_api("GET", f"/users/{user_id}/")
+
+
+# Static resource: a fixed URI, listed under resources/list, so clients can
+# offer it directly (e.g. @dj-users:users://cities in Claude Code).
+@mcp.resource(
+    "users://cities",
+    title="Users per city",
+    description="How many users live in each city. Users without a city are counted as null.",
+    mime_type="application/json",
+)
+def cities_resource() -> dict:
+    """Count users per city across all pages of the API."""
+    counts: dict[str | None, int] = {}
+    page = 1
+    while True:
+        data = call_api("GET", "/users/", params={"page": page})
+        if "error" in data:
+            return data
+        for user in data["results"]:
+            city = (user.get("profile") or {}).get("city") or None
+            counts[city] = counts.get(city, 0) + 1
+        if not data.get("next"):
+            break
+        page += 1
+    by_size = dict(sorted(counts.items(), key=lambda item: -item[1]))
+    return {"total_users": sum(counts.values()), "cities": by_size}
 
 
 @mcp.prompt()

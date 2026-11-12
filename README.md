@@ -139,8 +139,14 @@ server nests them into `profile` before calling the API.
 
 ### Resources and prompts
 
-- **Resource** `users://{user_id}` returns the same data as `get_user`, so a client can attach a
-  user to the conversation as context.
+Resources are read-only data that the user or the client attaches to the conversation as context;
+unlike tools, the model does not call them to act. Both return JSON:
+
+- **Static resource** `users://cities` counts users per city across all pages of the API, for
+  example `{"total_users": 11, "cities": {"Miami": 2, "Tampa": 1, ...}}`. It has a fixed URI, so
+  clients list it directly; in Claude Code type `@dj-users:users://cities` in the prompt.
+- **Resource template** `users://{user_id}` returns the same data as `get_user`. The user fills in
+  the id, e.g. `users://3`.
 - **Prompt** `city_report(city)` produces the request "List the users from {city} and summarize
   where they work.", which the model answers with `list_users`.
 
