@@ -69,6 +69,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
 
 
 # Database
@@ -147,7 +148,13 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "simple": {"format": "{levelname} {name}: {message}", "style": "{"},
+        # Time and thread show the stream's pacing and that async views run on the
+        # event loop thread, while sync (DRF) views run in a worker thread.
+        "simple": {
+            "format": "{asctime}.{msecs:03.0f} [{threadName}] {levelname} {name}: {message}",
+            "datefmt": "%H:%M:%S",
+            "style": "{",
+        },
     },
     "handlers": {
         "console": {"class": "logging.StreamHandler", "formatter": "simple"},

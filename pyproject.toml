@@ -9,6 +9,7 @@ dependencies = [
     "djangorestframework>=3.18.3",
     "httpx>=0.28.1",
     "mcp[cli]>=2.3.0",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [tool.uv]

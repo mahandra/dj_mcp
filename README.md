@@ -19,10 +19,16 @@ do not ship. `uv sync` downloads it automatically.
 ## Running
 
 ```bash
-uv run python manage.py runserver         # http://127.0.0.1:8000/api/
+uv run python -m uvicorn config.asgi:application --reload --lifespan off   # http://127.0.0.1:8000/api/
 uv run python manage.py test              # run the test suite
 uv run python manage.py createsuperuser   # for the admin at /admin/
 ```
+
+The app runs under ASGI (`config/asgi.py`) with [uvicorn](https://www.uvicorn.org/), so async
+views and streaming responses are served natively. `--reload` restarts on code changes. In
+`DEBUG`, `config/asgi.py` wraps the app in Django's `ASGIStaticFilesHandler` so the admin's static
+files are served, as `runserver` used to do. `python -m uvicorn` makes sure the project's
+environment is used rather than another `uvicorn` on `PATH`.
 
 ## API
 
@@ -35,6 +41,7 @@ uv run python manage.py createsuperuser   # for the admin at /admin/
 | `DELETE`      | `/api/users/{id}/`        | Delete a user and their profile      |
 | `GET`         | `/api/users/?city=Tampa`  | Filter by city (case-insensitive)    |
 | `GET`         | `/api/users/?search=text` | Search username, names and workplace |
+| `GET`         | `/api/users/stream/`      | Stream all users as NDJSON (async)   |
 
 User representation:
 
@@ -58,6 +65,33 @@ request keep their current values, on `PUT` as well as `PATCH`.
 
 Passwords are not part of the API: users created through it have an unusable password
 and cannot log in.
+
+### Streaming
+
+`/api/users/stream/` is an async Django view (DRF views are sync) that returns a
+`StreamingHttpResponse`: users are read with `async for` and sent one JSON object per line
+(`application/x-ndjson`), so clients can process them as they arrive. It takes the same
+`?city=` filter as the list and is not paginated.
+
+```bash
+curl -N http://127.0.0.1:8000/api/users/stream/
+curl -N "http://127.0.0.1:8000/api/users/stream/?city=Tampa"
+```
+
+Client examples that read the stream line by line, printing when each user arrives:
+
+```bash
+uv run python examples/stream_client.py [City]   # Python, httpx
+node examples/stream_client.mjs [City]           # Node.js 18+, no dependencies
+```
+
+In a browser, open <http://127.0.0.1:8000/static/api/stream_demo.html>
+(`api/static/api/stream_demo.html`): it reads the stream with `fetch` and adds each user to a
+table as it arrives; **Stop** aborts the request, which the server logs as a disconnect. The page
+is served from the same origin as the API, so no CORS setup is needed, and only in `DEBUG`.
+
+Set `STREAM_URL` to use another address. Lines arrive one by one only under uvicorn (ASGI);
+under `manage.py runserver` (WSGI) Django buffers the whole stream and sends it at the end.
 
 ### curl examples
 
@@ -115,7 +149,7 @@ MCP client  ──stdio──▶  mcp_server/server.py  ──HTTP──▶  Dja
 - The server does not touch the database or import Django. Every tool is a thin wrapper that
   sends an HTTP request to the REST API with `httpx`, so all validation, the profile signal and
   the write logging in `UserViewSet` apply exactly as they do for `curl`.
-- **The Django dev server must be running** (`uv run python manage.py runserver`). The API URL is
+- **The Django dev server must be running** (`uv run python -m uvicorn config.asgi:application --reload --lifespan off`). The API URL is
   set by `API_URL` at the top of `server.py`.
 - Errors are returned to the model as data instead of raising, so it can see what went wrong and
   react:
@@ -155,7 +189,7 @@ unlike tools, the model does not call them to act. Both return JSON:
 Start the API first:
 
 ```bash
-uv run python manage.py runserver
+uv run python -m uvicorn config.asgi:application --reload --lifespan off
 ```
 
 **Claude Code** — register the server for this project:

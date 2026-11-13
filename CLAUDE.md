@@ -9,7 +9,7 @@ Use uv for everything; never pip or requirements.txt.
 ```bash
 uv sync                                      # install dependencies
 uv run python manage.py migrate              # apply migrations
-uv run python manage.py runserver            # dev server at http://127.0.0.1:8000/api/
+uv run python -m uvicorn config.asgi:application --reload --lifespan off   # ASGI dev server at http://127.0.0.1:8000/api/
 uv run python manage.py test                 # all tests
 uv run python manage.py test api.tests.UserApiTests.test_create_with_profile   # one test
 uv run python manage.py seed_users           # idempotent demo data (10 users)
@@ -18,11 +18,13 @@ uv run python manage.py makemigrations api   # after changing api/models.py
 
 ## Structure
 
-- `config/` — project package: `settings.py` (includes `REST_FRAMEWORK`), root `urls.py`.
+- `config/` — project package: `settings.py` (includes `REST_FRAMEWORK`), root `urls.py`,
+  `asgi.py` (the entry point uvicorn serves; wraps static files in `DEBUG`).
 - `api/models.py` — `Profile`, one-to-one with the built-in `User`.
 - `api/signals.py` — `post_save` receiver that creates the `Profile`; connected in `api/apps.py`.
 - `api/serializers.py` — `UserSerializer` with nested `ProfileSerializer` and its writes.
-- `api/views.py` — `UserViewSet`: CRUD, `?city=` filter, `?search=`.
+- `api/views.py` — `UserViewSet`: CRUD, `?city=` filter, `?search=`; `stream_users`: async
+  NDJSON stream at `/api/users/stream/` (a plain Django view, not DRF).
 - `api/urls.py` — `DefaultRouter`, included under `/api/` by `config/urls.py`.
 - `api/admin.py` — `UserAdmin` with the `Profile` inline.
 - `api/management/commands/seed_users.py` — demo data.
@@ -39,6 +41,9 @@ uv run python manage.py makemigrations api   # after changing api/models.py
 - **The admin inline is hidden on the add form** because the signal has already created the
   `Profile` by the time inlines are saved.
 - **All API routes live under `/api/`.** Register new viewsets on the router in `api/urls.py`.
+- **Async views are plain Django views**, since DRF views are sync. Load related objects with
+  `select_related` before serializing: a lazy query in async code raises `SynchronousOnlyOperation`.
+  Put their paths before `router.urls`, or `users/{pk}/` swallows them.
 - **Project-wide API behaviour is set in `REST_FRAMEWORK`** (permissions, pagination), not per
   view. `AllowAny` is a development default.
 - **Credentials are not exposed by the API.** Do not add `password` to `UserSerializer` fields.
@@ -49,3 +54,7 @@ uv run python manage.py makemigrations api   # after changing api/models.py
 `pyproject.toml` sets `python-preference = "only-managed"`: Django 6.1 requires SQLite >= 3.37, and
 pyenv/system Pythons here link an older one (`NotSupportedError: SQLite 3.37 or later is required`).
 Keep this setting unless Django is downgraded.
+
+The server is ASGI (uvicorn), not `runserver`. Start it with `python -m uvicorn`, not a bare
+`uvicorn`: a global pyenv shim can shadow the venv's script and fail with
+`ModuleNotFoundError: No module named 'django'`.

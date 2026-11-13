@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from io import StringIO
 from unittest.mock import patch
@@ -5,7 +6,7 @@ from unittest.mock import patch
 import httpx
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import SimpleTestCase, TestCase
+from django.test import AsyncClient, SimpleTestCase, TestCase
 from django.urls import reverse
 from rest_framework import status
 from mcp_server.server import call_api
@@ -229,6 +230,65 @@ class UserApiLoggingTests(APITestCase):
             )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+@patch("api.views.STREAM_DELAY", 0)
+class UserStreamTests(TestCase):
+    url = reverse("user-stream")
+
+    @classmethod
+    def setUpTestData(cls):
+        make_user("alice", city="Tampa", first_name="Alice")
+        make_user("bob", city="Boston")
+        make_user("carol", city="tampa")
+
+    async def stream(self, params=None):
+        """Request the stream and read it fully; the view's logs are captured, not printed."""
+        with self.assertLogs("api.views", level="INFO") as logs:
+            response = await self.async_client.get(self.url, params)
+            body = b"".join([chunk async for chunk in response.streaming_content])
+        lines = [json.loads(line) for line in body.decode().splitlines()]
+        return response, lines, [record.getMessage() for record in logs.records]
+
+    async def test_streams_users_as_ndjson(self):
+        response, users, _ = await self.stream()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.streaming)
+        self.assertEqual(response["Content-Type"], "application/x-ndjson")
+        self.assertEqual([u["username"] for u in users], ["alice", "bob", "carol"])
+        self.assertEqual(users[0]["first_name"], "Alice")
+        self.assertEqual(users[0]["profile"]["city"], "Tampa")
+        self.assertNotIn("password", users[0])
+
+    async def test_city_filter_is_case_insensitive(self):
+        _, users, _ = await self.stream({"city": "TAMPA"})
+
+        self.assertEqual([u["username"] for u in users], ["alice", "carol"])
+
+    async def test_logs_stream_lifecycle(self):
+        _, _, messages = await self.stream({"city": "Boston"})
+
+        # The view returns before the generator sends anything.
+        self.assertEqual(
+            messages,
+            [
+                "stream: request received, city='Boston'",
+                "stream: view returned the response, streaming starts now",
+                "stream: generator started, sending users",
+                "stream: read user id=2 from the database",
+                "stream: sent user id=2, sleeping 0s",
+                messages[-1],
+            ],
+        )
+        self.assertRegex(messages[-1], r"^stream: finished, 1 users in \d+\.\d\ds$")
+
+    async def test_rejects_non_get(self):
+        # The test client skips CSRF checks by default; the real server does not.
+        client = AsyncClient(enforce_csrf_checks=True)
+        response = await client.post(self.url)
+
+        self.assertEqual(response.status_code, 405)
 
 
 class ProfileSignalTests(TestCase):
