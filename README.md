@@ -138,6 +138,8 @@ curl "http://127.0.0.1:8000/api/users/?search=rossi"
 named `dj-users`. It lets an MCP client (Claude Code, Claude Desktop, MCP Inspector) read and
 change users in plain language, for example "find everyone from Tampa" or "move user 3 to Miami".
 
+![Claude Code answering questions about users through the dj-users MCP server](photo/2026-11-16_14-44.png)
+
 ### How it works
 
 ```
